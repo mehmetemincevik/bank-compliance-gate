@@ -1,0 +1,146 @@
+# BDDK / KVKK / PCI DSS kontrol kataloğu
+# method: deterministic | hybrid | agent
+# enforcement: block | review | advisory
+# TODO: BDDK madde numaralarını ekle, ref'leri doğrula
+
+version: 0.1
+controls:
+
+  - id: CTRL-001
+    title: Kart güvenlik kodu (CVV/CVC) saklanmamalı
+    regulation:
+      - { source: PCI DSS, ref: "3.3.1", verified: false }
+    scope: [schema, entity, migration, code]
+    method: deterministic
+    tools: [semgrep]
+    check: >
+      Entity/migration/DTO'larda cvv, cvc, cvv2, cvc2, securityCode,
+      cardVerification* gibi alanların kalıcı depolamaya yazılması.
+    enforcement: block
+    severity: critical
+
+  - id: CTRL-002
+    title: Kart numarası (PAN) loglara açık yazılmamalı
+    regulation:
+      - { source: PCI DSS, ref: "3.4.1 / Req. 10", verified: false }
+      - { source: KVKK, ref: "Md. 12", verified: false }
+    scope: [code]
+    method: hybrid
+    tools: [semgrep-taint]
+    check: >
+      PAN içeren değişkenlerin (cardNumber, pan, kartNo...) maskelenmeden
+      logger/console çağrılarına akması (taint analizi). Luhn geçerli
+      16 haneli sabitler de işaretlenir. Ajan: değişkenin gerçekten PAN
+      olup olmadığını ve maskeleme fonksiyonundan geçip geçmediğini yorumlar.
+    enforcement: block
+    severity: critical
+
+  - id: CTRL-003
+    title: Kart numarası veritabanında okunamaz (şifreli/tokenize) tutulmalı
+    regulation:
+      - { source: PCI DSS, ref: "3.5.1", verified: false }
+    scope: [entity, migration]
+    method: hybrid
+    tools: [semgrep]
+    check: >
+      PAN kolonlarında şifreleme transformer'ı (TypeORM ValueTransformer),
+      tokenizasyon servisi veya pgcrypto kullanımı yoksa bulgu.
+    enforcement: block
+    severity: critical
+
+  - id: CTRL-004
+    title: Kaynak kodda/konfigürasyonda gömülü secret olmamalı
+    regulation:
+      - { source: PCI DSS, ref: "8.6.2", verified: false }
+      - { source: BDDK, ref: "Bilgi Sistemleri Yönetmeliği, erişim/kimlik yönetimi (madde doğrulanacak)", verified: false }
+    scope: [code, config, iac, history]
+    method: deterministic
+    tools: [gitleaks]
+    check: API anahtarı, parola, private key, connection string tespiti.
+    enforcement: block
+    severity: critical
+
+  - id: CTRL-005
+    title: İletimde güçlü şifreleme (TLS) zorunlu
+    regulation:
+      - { source: PCI DSS, ref: "4.2.1", verified: false }
+      - { source: KVKK, ref: "Md. 12", verified: false }
+    scope: [code, config, iac]
+    method: deterministic
+    tools: [semgrep, checkov]
+    check: >
+      Harici çağrılarda http:// URL, rejectUnauthorized:false,
+      TLS 1.2 altı minimum sürüm, load balancer'da HTTP listener.
+    enforcement: block
+    severity: high
+
+  - id: CTRL-006
+    title: Bankacılık sistemleri yurt içinde barındırılmalı (veri yerelliği)
+    regulation:
+      - { source: BDDK, ref: "Bilgi Sistemleri Yönetmeliği, birincil/ikincil sistemlerin yurt içinde bulundurulması (madde doğrulanacak)", verified: false }
+    scope: [iac]
+    method: deterministic
+    tools: [opa-conftest, checkov]
+    check: >
+      Terraform provider/resource region değerleri izinli bölge listesi
+      dışındaysa bulgu. İzinli liste config'ten okunur (allowed_regions).
+    enforcement: block
+    severity: critical
+
+  - id: CTRL-007
+    title: Kişisel veri alanları sınıflandırılmalı ve korunmalı
+    regulation:
+      - { source: KVKK, ref: "Md. 12 (veri güvenliği)", verified: false }
+      - { source: KVKK, ref: "Md. 6 (özel nitelikli kişisel veri)", verified: false }
+    scope: [entity, migration, dto]
+    method: agent
+    tools: [schema-diff]
+    check: >
+      Yeni eklenen kolonları ajan sınıflandırır: genel kişisel veri
+      (TCKN, telefon, adres, e-posta) / özel nitelikli (sağlık, biyometrik)
+      / kişisel değil. Kişisel/özel nitelikli ise şifreleme veya maskeleme
+      ve erişim kısıtı var mı kontrol eder. Gerekçesini rapora yazar.
+    enforcement: review
+    severity: high
+
+  - id: CTRL-008
+    title: Hassas işlemler iz kaydına (audit log) düşmeli
+    regulation:
+      - { source: BDDK, ref: "Bilgi Sistemleri Yönetmeliği, iz kayıtları (madde doğrulanacak)", verified: false }
+      - { source: PCI DSS, ref: "10.2", verified: false }
+    scope: [code]
+    method: hybrid
+    tools: [semgrep]
+    check: >
+      Müşteri/hesap/ödeme verisine dokunan controller/handler'larda
+      audit interceptor veya @Audit dekoratörü yoksa aday bulgu.
+      Ajan: endpoint'in gerçekten hassas işlem yapıp yapmadığını değerlendirir.
+    enforcement: review
+    severity: high
+
+  - id: CTRL-009
+    title: Yönetici ve kritik işlemlerde çok faktörlü doğrulama
+    regulation:
+      - { source: PCI DSS, ref: "8.4", verified: false }
+      - { source: BDDK, ref: "Bilgi Sistemleri Yönetmeliği, kimlik doğrulama (madde doğrulanacak)", verified: false }
+    scope: [code]
+    method: hybrid
+    tools: [semgrep]
+    check: >
+      /admin rotaları ve para transferi gibi kritik endpoint'lerde MFA
+      guard'ı yoksa bulgu. Ajan yeni eklenen rotanın kritikliğini yorumlar.
+    enforcement: review
+    severity: high
+
+  - id: CTRL-010
+    title: Bilinen kritik zafiyetli bağımlılık kullanılmamalı
+    regulation:
+      - { source: PCI DSS, ref: "6.3.3", verified: false }
+    scope: [dependencies, container]
+    method: deterministic
+    tools: [trivy]
+    check: CRITICAL seviyeli ve düzeltmesi mevcut CVE varsa bulgu.
+    enforcement: block
+    severity: high
+
+# TODO: KVKK Md. 9 yurt dışı aktarım, KVKK Md. 7 silme/anonimleştirme, PCI 3.4.1 ekranda maskeleme

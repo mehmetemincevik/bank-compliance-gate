@@ -1,0 +1,121 @@
+rules:
+  - id: ctrl-001-cvv-persisted
+    languages: [typescript]
+    severity: ERROR
+    message: Kart güvenlik kodu (CVV/CVC) entity alanı olarak saklanıyor
+    metadata: { control: CTRL-001, confidence: certain }
+    patterns:
+      - pattern: |
+          @Column(...)
+          $F: $T
+      - metavariable-regex:
+          metavariable: $F
+          regex: (?i)^(cvv2?|cvc2?|securityCode|cardVerification\w*)$
+
+  - id: ctrl-003-pan-unencrypted
+    languages: [typescript]
+    severity: ERROR
+    message: Kart numarası kolonu şifreleme/tokenizasyon olmadan tanımlanmış
+    metadata: { control: CTRL-003, confidence: candidate }
+    patterns:
+      - pattern: |
+          @Column(...)
+          $F: $T
+      - pattern-not: |
+          @Column({..., transformer: $X, ...})
+          $F: $T
+      - metavariable-regex:
+          metavariable: $F
+          regex: (?i)^(cardNumber|pan|primaryAccountNumber|kartNo)$
+
+  - id: ctrl-005-tls-verify-disabled
+    languages: [typescript]
+    severity: ERROR
+    message: TLS sertifika doğrulaması kapatılmış (rejectUnauthorized false)
+    metadata: { control: CTRL-005, confidence: certain }
+    pattern: "{..., rejectUnauthorized: false, ...}"
+
+  - id: ctrl-005-plain-http-url
+    languages: [typescript]
+    severity: ERROR
+    message: Harici servis adresi şifresiz http:// kullanıyor
+    metadata: { control: CTRL-005, confidence: certain }
+    options:
+      constant_propagation: false
+    patterns:
+      - pattern: '"$URL"'
+      - metavariable-regex:
+          metavariable: $URL
+          regex: ^http://(?!localhost|127\.0\.0\.1)
+
+  - id: ctrl-008-missing-audit
+    languages: [typescript]
+    severity: WARNING
+    message: Durum değiştiren endpoint'te @Audit iz kaydı yok
+    metadata: { control: CTRL-008, confidence: candidate }
+    patterns:
+      - pattern-inside: |
+          @Controller(...)
+          class $C { ... }
+      - pattern: |
+          @$VERB(...)
+          $M(...) { ... }
+      - metavariable-regex:
+          metavariable: $VERB
+          regex: ^(Post|Put|Patch|Delete)$
+      - pattern-not: |
+          @Audit(...)
+          $M(...) { ... }
+
+  - id: ctrl-009-missing-mfa
+    languages: [typescript]
+    severity: WARNING
+    message: Kritik endpoint'te MfaGuard yok
+    metadata: { control: CTRL-009, confidence: candidate }
+    patterns:
+      - pattern-either:
+          - pattern-inside: |
+              @Controller("$P")
+              class $C { ... }
+      - metavariable-regex:
+          metavariable: $P
+          regex: ^(admin|transfers)
+      - pattern: |
+          @$VERB(...)
+          $M(...) { ... }
+      - metavariable-regex:
+          metavariable: $VERB
+          regex: ^(Post|Put|Patch|Delete)$
+      - pattern-not: |
+          @UseGuards(..., MfaGuard, ...)
+          $M(...) { ... }
+
+  - id: ctrl-002-pan-logged
+    languages: [typescript]
+    severity: ERROR
+    message: Kart numarası maskelenmeden loga yazılıyor
+    metadata: { control: CTRL-002, confidence: candidate }
+    mode: taint
+    pattern-sources:
+      - patterns:
+          - pattern: $X.$F
+          - metavariable-regex:
+              metavariable: $F
+              regex: (?i)^(cardNumber|pan|primaryAccountNumber|kartNo)$
+      - patterns:
+          - pattern: $DTO
+          - pattern-inside: |
+              $M($DTO: $T) { ... }
+          - metavariable-regex:
+              metavariable: $T
+              regex: (?i).*(Card|Charge|Payment).*Dto$
+    pattern-sanitizers:
+      - pattern: maskPan(...)
+    pattern-sinks:
+      - pattern-either:
+          - pattern: $L.log(...)
+          - pattern: $L.debug(...)
+          - pattern: $L.info(...)
+          - pattern: $L.warn(...)
+          - pattern: $L.error(...)
+          - pattern: console.$FN(...)

@@ -1,0 +1,218 @@
+# demo-bank-api beklenen bulgular
+# eşleştirme: (control, file, symbol)
+
+target: demo-bank-api
+controls_version: 0.1
+
+violations:
+  - id: V01
+    control: CTRL-001
+    file: src/cards/card.entity.ts
+    symbol: Card.cvv
+    difficulty: easy
+
+  - id: V02
+    control: CTRL-002
+    file: src/cards/cards.service.ts
+    symbol: CardsService.register
+    note: dto.cardNumber doğrudan logger.log içinde
+    difficulty: easy
+
+  - id: V03
+    control: CTRL-002
+    file: src/cards/cards.service.ts
+    symbol: CardsService.charge
+    note: PAN, JSON.stringify(dto) üzerinden dolaylı olarak loga akıyor
+    difficulty: hard
+
+  - id: V04
+    control: CTRL-003
+    file: src/cards/card.entity.ts
+    symbol: Card.cardNumber
+    note: transformer/tokenizasyon yok
+    difficulty: easy
+
+  - id: V05
+    control: CTRL-004
+    file: src/app.module.ts
+    symbol: TypeOrmModule.forRoot.password
+    note: >
+      gitleaks v8.21.2 varsayılan kurallarıyla YAKALANMIYOR (test edildi) -
+      obje içindeki password alanı için özel kural veya ajan gerekir
+    difficulty: hard
+
+  - id: V06
+    control: CTRL-004
+    file: src/integrations/fraud-score.client.ts
+    symbol: FRAUD_API_KEY
+    difficulty: easy
+
+  - id: V07
+    control: CTRL-005
+    file: src/integrations/fraud-score.client.ts
+    symbol: FRAUD_API_URL
+    note: harici çağrı http:// üzerinden
+    difficulty: easy
+
+  - id: V08
+    control: CTRL-005
+    file: src/integrations/fraud-score.client.ts
+    symbol: FraudScoreClient.http
+    note: rejectUnauthorized false
+    difficulty: easy
+
+  - id: V09
+    control: CTRL-005
+    file: infra/main.tf
+    symbol: aws_lb_listener.api_http
+    difficulty: easy
+
+  - id: V10
+    control: CTRL-006
+    file: infra/main.tf
+    symbol: provider.aws
+    note: varsayılan provider izinli bölge dışında
+    difficulty: easy
+
+  - id: V11
+    control: CTRL-006
+    file: infra/main.tf
+    symbol: aws_s3_bucket.statement_backups
+    note: alias'lı provider üzerinden farklı bölgeye yedek, kaynağın bölgesi provider'dan çözülmeli
+    difficulty: hard
+
+  - id: V12
+    control: CTRL-007
+    file: src/customers/customer.entity.ts
+    symbol: Customer.tckn
+    note: kişisel veri, şifresiz
+    difficulty: easy
+
+  - id: V13
+    control: CTRL-007
+    file: src/customers/customer.entity.ts
+    symbol: Customer.healthNote
+    note: özel nitelikli kişisel veri (sağlık), şifresiz, isimden değil anlamdan çıkarılmalı
+    difficulty: hard
+
+  - id: V14
+    control: CTRL-008
+    file: src/transfers/transfers.controller.ts
+    symbol: TransfersController.create
+    note: para transferi, @Audit yok
+    difficulty: easy
+
+  - id: V15
+    control: CTRL-009
+    file: src/transfers/transfers.controller.ts
+    symbol: TransfersController.create
+    note: para transferi, MfaGuard yok
+    difficulty: easy
+
+  - id: V16
+    control: CTRL-009
+    file: src/admin/admin.controller.ts
+    symbol: AdminController.overrideLimit
+    note: "@Audit var ama MfaGuard yok, kısmi koruma tuzağı"
+    difficulty: hard
+
+  - id: V17
+    control: CTRL-010
+    file: package-lock.json
+    symbol: minimist@1.2.5
+    note: bilinen prototype pollution zafiyeti (CVE-2021-44906); Trivy lockfile ister
+    difficulty: easy
+
+  - id: V18
+    control: CTRL-008
+    file: src/admin/admin.controller.ts
+    symbol: AdminController.openPanel
+    note: admin POST endpoint'i, @Audit yok
+    difficulty: easy
+
+  - id: V19
+    control: CTRL-009
+    file: src/admin/admin.controller.ts
+    symbol: AdminController.openPanel
+    note: admin POST endpoint'i, MfaGuard yok
+    difficulty: easy
+
+# bulgu çıkmaması gerekenler
+true_negatives:
+  - id: N01
+    control: CTRL-002
+    file: src/cards/cards.service.ts
+    symbol: CardsService.listForCustomer
+    reason: PAN loglanıyor ama maskPan'den geçmiş
+
+  - id: N02
+    control: CTRL-002
+    file: src/cards/cards.service.ts
+    symbol: CardsService.reconcile
+    reason: 16 haneli ama Luhn geçersiz sipariş referansı, kart numarası değil
+
+  - id: N03
+    control: CTRL-002
+    file: src/admin/admin.controller.ts
+    symbol: AdminController.openPanel
+    reason: '"panelId" isminde "pan" geçiyor, isim tabanlı kuralın tuzağı'
+
+  - id: N04
+    control: CTRL-007
+    file: src/customers/customer.entity.ts
+    symbol: Customer.email
+    reason: kişisel veri ama encrypted transformer ile şifreli
+
+  - id: N05
+    control: CTRL-007
+    file: src/customers/customer.entity.ts
+    symbol: Customer.preferredLanguage
+    reason: kişisel veri değil
+
+  - id: N06
+    control: CTRL-008
+    file: src/transfers/transfers.controller.ts
+    symbol: TransfersController.history
+    reason: "@Audit ve MfaGuard ikisi de var"
+
+  - id: N07
+    control: CTRL-003
+    file: src/customers/customer.entity.ts
+    symbol: Customer.email
+    reason: şifreleme örüntüsünün doğru tanındığının kontrolü
+
+# tartışmalı, skora girmez
+ambiguous:
+  - id: A01
+    control: CTRL-007
+    file: src/customers/customer.entity.ts
+    symbol: Customer.fullName
+    reason: kişisel veri, ancak her alanın şifrelenmesi pratik değil; maskeleme/erişim kısıtı yeterli olabilir
+
+  - id: A02
+    control: CTRL-007
+    file: src/customers/customer.entity.ts
+    symbol: Customer.riskScore
+    reason: müşteriye ilişkin türetilmiş veri; kişisel veri sayılıp sayılmayacağı yoruma açık
+
+  # kart alanları PCI kontrolleriyle zaten kapsanıyor
+  - id: A03
+    control: CTRL-007
+    file: src/cards/card.entity.ts
+    symbol: Card.cardNumber
+    reason: kart sahibi verisi, PCI kapsamında (CTRL-003) zaten raporlanıyor
+  - id: A04
+    control: CTRL-007
+    file: src/cards/card.entity.ts
+    symbol: Card.cvv
+    reason: kart verisi, CTRL-001 zaten raporluyor
+  - id: A05
+    control: CTRL-007
+    file: src/cards/card.entity.ts
+    symbol: Card.expiry
+    reason: kart sahibi verisi, PCI kapsamında
+  - id: A06
+    control: CTRL-007
+    file: src/cards/card.entity.ts
+    symbol: Card.holderName
+    reason: kart sahibi verisi, PCI kapsamında

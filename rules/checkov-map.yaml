@@ -1,0 +1,4 @@
+# checkov check id -> control
+CTRL-005:
+  - CKV_AWS_2
+  - CKV_AWS_103

@@ -1,0 +1,19 @@
+controls_file: ../controls.yaml
+
+scan:
+  include: [src/**, infra/**, package.json, package-lock.json]
+  exclude: [dist/**, node_modules/**]
+
+ctrl-006:
+  allowed_regions: [tr-istanbul-1]
+
+ctrl-008:
+  audit_markers: ["@Audit"]
+  sensitive_paths: [transfers, cards, customers, admin]
+
+ctrl-009:
+  mfa_markers: ["MfaGuard"]
+  critical_paths: [admin, transfers]
+
+pan_mask_functions: [maskPan]
+encryption_transformers: [encrypted]

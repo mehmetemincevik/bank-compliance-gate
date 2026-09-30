@@ -1,0 +1,105 @@
+name: compliance-gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compliance-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: write
+    env:
+      TARGET: demo-bank-api
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: compliance-runner/package-lock.json
+
+      - name: Install scanners
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          export PATH="$RUNNER_TEMP/bin:$PATH"
+          BIN_DIR="$RUNNER_TEMP/bin" bash scripts/install-scanners.sh
+
+      - name: Cache trivy db
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ github.run_id }}
+          restore-keys: trivy-db-
+
+      - name: Build runner
+        working-directory: compliance-runner
+        run: |
+          npm ci
+          npm run build
+
+      - name: Scan
+        id: scan
+        working-directory: compliance-runner
+        continue-on-error: true
+        env:
+          SARIF_PATH_PREFIX: ${{ env.TARGET }}
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
+          LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          AGENTS: ${{ secrets.LLM_API_KEY == '' && 'off' || 'on' }}
+        run: node dist/cli.js "../$TARGET" ../controls.yaml out/findings.json
+
+      - name: Job summary
+        if: always() && hashFiles('compliance-runner/out/summary.md') != ''
+        run: cat compliance-runner/out/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload SARIF
+        if: always() && hashFiles('compliance-runner/out/results.sarif') != ''
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          sarif_file: compliance-runner/out/results.sarif
+          category: compliance
+
+      - name: PR comment
+        if: >-
+          always() && hashFiles('compliance-runner/out/summary.md') != '' &&
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr comment "$PR" --edit-last --body-file compliance-runner/out/summary.md \
+            || gh pr comment "$PR" --body-file compliance-runner/out/summary.md
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: compliance-report
+          path: compliance-runner/out/
+          retention-days: 30
+
+      - name: Gate
+        if: steps.scan.outcome == 'failure'
+        run: |
+          echo "compliance gate failed, see job summary"
+          exit 1
